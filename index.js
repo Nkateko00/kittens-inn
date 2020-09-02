@@ -1,8 +1,17 @@
 const express = require("express");
+const pg = require("pg");
 
 const exphbs = require("express-handlebars");
 const bodyParser = require("body-parser"); 	// add this line
 const app = express();
+const Pool = pg.Pool;
+const connectionString = process.env.DATABASE_URL || 'postgresql://teko:teko123@localhost:5432/kitten_inn';
+const pool = new Pool({
+	connectionString
+});
+const INSERT_QUERY = "insert into booking (name, staying_for, arriving_on) values ($1, $2, $3)";
+
+
 
 app.use(express.static("public"));
 app.use(bodyParser.urlencoded({ extended: false })); // add this line
@@ -16,39 +25,60 @@ const kittens = [
 ];
 
 // after you added  this  restart the app
-app.get("/", function (req, res) {
-	res.render("index", { kittens });
+app.get("/", async function (req, res) {
+
+	const kittens = await pool.query(`select id, name, staying_for as days,
+									arriving_on as "arrivingOn"  from booking`);
+
+	res.render("index", { kittens: kittens.rows });
 });
 
 
 
-app.post("/filter", function (req, res) {
+app.post("/filter", async function (req, res) {
 
 	const daysFilter = req.body.daysFilter;
 
-	let filteredData = kittens;
+	let filteredData = [];
 	if (daysFilter === "three") {
-		filteredData = kittens.filter(function(kitten) {
-			return kitten.days <= 3;
-		});
-	} else if (daysFilter === "more") {
-		filteredData = kittens.filter(function(kitten) {
-			return kitten.days > 3;
-		});
+
+		const LESS_OR_EQL_THAN_3 = `select id, name, staying_for as days,
+									arriving_on as "arrivingOn"
+									from booking where staying_for <=3`;
+
+		const result = await pool.query(LESS_OR_EQL_THAN_3);
+		filteredData = result.rows;
+
+	}
+	else if (daysFilter === "more") {
+
+		const MORE_THAN_3 = `select id, name, staying_for as days,
+									arriving_on as "arrivingOn"
+									from booking where staying_for > 3`;
+
+		const result = await pool.query(MORE_THAN_3);
+		filteredData = result.rows;
+
+	}
+	else{
+		res.redirect("/");
 	}
 
-	res.render("index", { kittens : filteredData	 });
+	res.render("index", { kittens: filteredData });
 });
 
-app.post("/booking", function (req, res) {
+app.post("/booking", async function (req, res) {
 
 	const days = req.body.days && Number(req.body.days);
 	const name = req.body.name;
 	const arrivingOn = req.body.day;
 
 	if (days && name && arrivingOn) {
+		const INSERT_QUERY = "insert into booking (name, staying_for, arriving_on) values ($1, $2, $3)";
+		await pool.query(INSERT_QUERY, [name, days, arrivingOn]);
+
 		kittens.push({
-			id : kittens.length+1,
+			id: kittens.length + 1,
 			days,
 			name,
 			arrivingOn
@@ -70,20 +100,23 @@ app.post("/booking", function (req, res) {
 		});
 
 		const kittenNameInvalid = validate(name, {
-				style: "is-invalid",
-				message: "Enter a valid day"
-			});
+			style: "is-invalid",
+			message: "Enter a valid day"
+		});
 
 		const arrivingOnInvalid = validate(arrivingOn, {
-				style: "is-invalid",
-				message: "Please select a arrival day"
-			});
+			style: "is-invalid",
+			message: "Please select a arrival day"
+		});
+
+		const kittens = await pool.query(`select id, name, staying_for as days,
+		arriving_on as "arrivingOn"  from booking`);
 
 
 		res.render("index", {
 			name,
 			days,
-			kittens,
+			kittens : kittens.rows,
 			daysInvalid,
 			arrivingOnInvalid,
 			kittenNameInvalid
@@ -106,3 +139,4 @@ const PORT = process.env.PORT || 3009;
 app.listen(PORT, function () {
 	console.log("App started on port :" + PORT);
 });
+
